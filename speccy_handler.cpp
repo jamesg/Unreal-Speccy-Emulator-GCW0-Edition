@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <libgen.h>
 #include "platform/platform.h"
 #include "speccy.h"
 #include "devices/memory.h"
@@ -36,6 +37,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "tools/options.h"
 #include "options_common.h"
 #include "file_type.h"
+#include "gameconfig.h"
 #include "snapshot/rzx.h"
 int gcw_fullscreen = 1;
 
@@ -215,39 +217,63 @@ void eSpeccyHandler::OnKey(char key, dword flags)
 
 	if(flags&KF_KEMPSTON)
 		speccy->Device<eKempstonJoy>()->OnKey(key, down);
+
 	if(flags&KF_CURSOR)
 	{
+		int i = -1;
 		switch(key)
 		{
-		case 'l' : key = '5'; shift = down; break;
-		case 'r' : key = '8'; shift = down; break;
-		case 'u' : key = '7'; shift = down; break;
-		case 'd' : key = '6'; shift = down; break;
-		case 'f' : key = '0'; shift = false; break;
+			case 'l' : i = PHYK_LEFT; break;
+			case 'r' : i = PHYK_RIGHT; break;
+			case 'u' : i = PHYK_UP; break;
+			case 'd' : i = PHYK_DOWN; break;
+			// V, X, F, and S letter keys are used to represent 1, 2, F and S
+			// gamepad buttons.
+			case 'V' : i = PHYK_ONE; break;
+			case 'X' : i = PHYK_TWO; break;
+			case 'F': i = PHYK_FIRST; break;
+			case 'S': i = PHYK_SELECT; break;
+		}
+		if(i > -1 && m_keymap[i] != 0)
+		{
+			key = m_keymap[i];
+			if(key == 'c')
+				shift = down;
+			if(key == 's')
+				alt = down;
+		}
+		switch(key)
+		{
+			case 'l' : key = '5'; shift = down; break;
+			case 'r' : key = '8'; shift = down; break;
+			case 'u' : key = '7'; shift = down; break;
+			case 'd' : key = '6'; shift = down; break;
+			case 'f' : key = '0'; shift = false; break;
 		}
 	}
 	else if(flags&KF_QAOP)
 	{
 		switch(key)
 		{
-		case 'l' : key = 'O'; break;
-		case 'r' : key = 'P'; break;
-		case 'u' : key = 'Q'; break;
-		case 'd' : key = 'A'; break;
-		case 'f' : key = ' '; break;
+			case 'l' : key = 'O'; break;
+			case 'r' : key = 'P'; break;
+			case 'u' : key = 'Q'; break;
+			case 'd' : key = 'A'; break;
+			case 'f' : key = ' '; break;
 		}
 	}
 	else if(flags&KF_SINCLAIR2)
 	{
 		switch(key)
 		{
-		case 'l' : key = '6'; break;
-		case 'r' : key = '7'; break;
-		case 'u' : key = '9'; break;
-		case 'd' : key = '8'; break;
-		case 'f' : key = '0'; break;
+			case 'l' : key = '6'; break;
+			case 'r' : key = '7'; break;
+			case 'u' : key = '9'; break;
+			case 'd' : key = '8'; break;
+			case 'f' : key = '0'; break;
 		}
 	}
+
 	speccy->Device<eKeyboard>()->OnKey(key, down, shift, ctrl, alt);
 }
 void eSpeccyHandler::OnMouse(eMouseAction action, byte a, byte b)
@@ -271,7 +297,7 @@ bool eSpeccyHandler::OpenFile(const char* name, const void* data, size_t data_si
 		return false;
 
 	if(data && data_size)
-		return t->Open(data, data_size);
+		return t->Open(name, data, data_size);
 
 	FILE* f = fopen(name, "rb");
 	if(!f)
@@ -287,7 +313,7 @@ bool eSpeccyHandler::OpenFile(const char* name, const void* data, size_t data_si
 		delete[] buf;
 		return false;
 	}
-	bool ok = t->Open(buf, size);
+	bool ok = t->Open(name, buf, size);
 	delete[] buf;
 	return ok;
 }
@@ -467,7 +493,7 @@ void SetupSoundChip()
 
 static struct eFileTypeRZX : public eFileType
 {
-	virtual bool Open(const void* data, size_t data_size)
+	virtual bool Open(const char *name, const void* data, size_t data_size)
 	{
 		eRZX* rzx = new eRZX;
 		if(rzx->Open(data, data_size, &sh) == eRZX::E_OK)
@@ -487,7 +513,7 @@ static struct eFileTypeRZX : public eFileType
 
 static struct eFileTypeZ80 : public eFileType
 {
-	virtual bool Open(const void* data, size_t data_size)
+	virtual bool Open(const char *name, const void* data, size_t data_size)
 	{
 		sh.OnAction(A_RESET);
 		return xSnapshot::Load(sh.speccy, Type(), data, data_size);
@@ -532,7 +558,7 @@ class eMacroDiskRun : public eMacro
 
 static struct eFileTypeTRD : public eFileType
 {
-	virtual bool Open(const void* data, size_t data_size)
+	virtual bool Open(const char *name, const void* data, size_t data_size)
 	{
 		eWD1793* wd = sh.speccy->Device<eWD1793>();
 		bool ok = wd->Open(Type(), OpDrive(), data, data_size);
@@ -596,7 +622,7 @@ class eMacroTapeLoad : public eMacro
 
 static struct eFileTypeTAP : public eFileType
 {
-	virtual bool Open(const void* data, size_t data_size)
+	virtual bool Open(const char *name, const void* data, size_t data_size)
 	{
 		bool ok = sh.speccy->Device<eTape>()->Open(Type(), data, data_size);
 		if(ok && op_auto_play_image)
@@ -617,6 +643,31 @@ static struct eFileTypeTZX : public eFileTypeTAP
 {
 	virtual const char* Type() { return "tzx"; }
 } ft_tzx;
+static struct eFileTypeZXK : public eFileType
+{
+	virtual bool Open(const char *name, const void* data, size_t data_size)
+	{
+		gameConfig gc(data, data_size);
+		if(gc.filename() != "")
+		{
+			// The filename in the .zxk file is relative to the directory of
+			// the .zxk file.
+			char *directory = strdup(name);
+			directory = dirname(directory);
+			std::ostringstream oss;
+			oss << directory << '/' << gc.filename();
+			free(directory);
+
+			//op_48k.Set(gc.mode_48k());
+			// Key mappings in the .zxk file are only applied in cursor
+			// joystick mode.  Switch to cursor joystick mode now.
+			OpJoystick(J_CURSOR);
+			Handler()->OnOpenFile(oss.str().c_str());
+		}
+		return true;
+	}
+	virtual const char* Type() { return "zxk"; }
+} ft_zxk;
 
 }
 //namespace xPlatform

@@ -71,10 +71,12 @@ namespace xPlatform
 		case DINGOO_BUTTON_LEFT:	return 'l';
 		case DINGOO_BUTTON_RIGHT:	return 'r';
 
-		case DINGOO_BUTTON_A:		return 'f';
-		case DINGOO_BUTTON_B:		return 'e';
-		case DINGOO_BUTTON_X:		return '1';
-		case DINGOO_BUTTON_Y:		return ' ';
+		// When the UI is focused, send the expected f/e/1/' ' keys.
+		// Otherwise, emulate the V/X/F/S keys on the keyboard.
+		case DINGOO_BUTTON_A:		return ui_focused ? 'f' : 'V';
+		case DINGOO_BUTTON_B:		return ui_focused ? 'e' : 'X';
+		case DINGOO_BUTTON_X:		return ui_focused ? '1' : 'F';
+		case DINGOO_BUTTON_Y:		return ui_focused ? ' ' : 'S';
 	
 		case DINGOO_BUTTON_SELECT:
 			b_select = _flags&KF_DOWN;

@@ -43,6 +43,20 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #endif//_WINDOWS || _LINUX || _MAC
 
+enum physicalKey
+{
+	// Keys referring to the Spectrum Vega keymap.
+	// GCW: FIRST = Y (top), SELECT = X (left), ONE = A (right), TWO = B (bottom).
+	/*
+	*     1           5
+	*   3   4       6   7
+	*     2           8
+	*/
+	PHYK_UP, PHYK_DOWN, PHYK_LEFT, PHYK_RIGHT, PHYK_FIRST, PHYK_SELECT, PHYK_ONE, PHYK_TWO, PHYK_A, PHYK_B, PHYK_C,
+	PHYK_ALT_UP, PHYK_ALT_DOWN, PHYK_ALT_LEFT, PHYK_ALT_RIGHT, PHYK_ALT_FIRST, PHYK_ALT_SELECT, PHYK_ALT_ONE, PHYK_ALT_TWO, PHYK_ALT_A, PHYK_ALT_B, PHYK_ALT_C,
+	END_PHYSICAL_KEY
+};
+
 namespace xPlatform
 {
 
@@ -83,6 +97,8 @@ struct eHandler
 	virtual void OnKey(char key, dword flags) = 0;
 	virtual void OnMouse(eMouseAction action, byte a, byte b) = 0;
 
+	virtual void RemapKey(physicalKey key, char action);
+
 	virtual bool OnOpenFile(const char* name, const void* data = NULL, size_t data_size = 0) = 0;
 	virtual bool OnSaveFile(const char* name) = 0;
 	virtual bool FileTypeSupported(const char* name) = 0;
@@ -100,6 +116,8 @@ struct eHandler
 	virtual void AudioDataUse(int source, dword size) = 0;
 
 	virtual bool FullSpeed() const = 0;
+
+	char m_keymap[END_PHYSICAL_KEY];
 };
 
 eHandler* Handler();

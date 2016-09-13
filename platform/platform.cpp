@@ -25,12 +25,20 @@ static eHandler* handler = NULL;
 
 eHandler::eHandler()
 {
+    //UP, DOWN, LEFT, RIGHT, FIRST, SELECT, ONE, TWO, A, B, C,
+    //ALT_UP, ALT_DOWN, ALT_LEFT, ALT_RIGHT, ALT_FIRST, ALT_SELECT, ALT_ONE, ALT_TWO, ALT_A, ALT_B, ALT_C,
+    for(int i = 0; i < END_PHYSICAL_KEY; ++i)
+        m_keymap[i] = 0;
 	assert(!handler);
 	handler = this;
 }
 eHandler::~eHandler()
 {
 	handler = NULL;
+}
+void eHandler::RemapKey(physicalKey key, char action)
+{
+	m_keymap[key] = action;
 }
 eHandler* Handler() { return handler; }
 
