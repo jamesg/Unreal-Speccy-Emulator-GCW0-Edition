@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "../../z80/z80.h"
 #include "../memory.h"
 #include "tape.h"
+#include "../../platform/platform.h"
 
 //=============================================================================
 //	eTape::Init
@@ -139,6 +140,7 @@ void eTape::FindTapeSizes()
 //-----------------------------------------------------------------------------
 void eTape::StopTape()
 {
+	xPlatform::Handler()->RefreshPokes();
 	FindTapeIndex();
 	if(tape.play_pointer >= tape.end_of_tape)
 		tape.index = 0;

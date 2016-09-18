@@ -16,6 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <map>
 #include <libgen.h>
 #include "platform/platform.h"
 #include "speccy.h"
@@ -78,6 +79,8 @@ static struct eSpeccyHandler : public eHandler, public eRZX::eHandler, public xZ
 	virtual const char* WindowCaption() { return "Unreal Speccy Portable"; }
 	virtual void OnKey(char key, dword flags);
 	virtual void OnMouse(eMouseAction action, byte a, byte b);
+	virtual void Poke(int addr, byte mem);
+	virtual void RefreshPokes();
 	virtual bool FileTypeSupported(const char* name)
 	{
 		eFileType* t = eFileType::FindByName(name);
@@ -115,6 +118,7 @@ static struct eSpeccyHandler : public eHandler, public eRZX::eHandler, public xZ
 	}
 
 	eSpeccy* speccy;
+	std::map<int, byte> m_poke;
 #ifdef USE_UI
 	xUi::eDesktop* ui_desktop;
 #endif//USE_UI
@@ -284,6 +288,16 @@ void eSpeccyHandler::OnMouse(eMouseAction action, byte a, byte b)
 	case MA_BUTTON:	speccy->Device<eKempstonMouse>()->OnMouseButton(a, b != 0);	break;
 	default: break;
 	}
+}
+void eSpeccyHandler::Poke(int addr, byte mem)
+{
+	m_poke[addr] = mem;
+	speccy->Memory()->Write(addr, mem);
+}
+void eSpeccyHandler::RefreshPokes()
+{
+	for(std::map<int, byte>::const_iterator i = m_poke.begin(); i != m_poke.end(); ++i)
+		speccy->Memory()->Write(i->first, i->second);
 }
 bool eSpeccyHandler::OnOpenFile(const char* name, const void* data, size_t data_size)
 {

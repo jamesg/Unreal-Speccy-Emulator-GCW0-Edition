@@ -98,6 +98,8 @@ struct eHandler
 	virtual void OnMouse(eMouseAction action, byte a, byte b) = 0;
 
 	virtual void RemapKey(physicalKey key, char action);
+	virtual void Poke(int addr, byte value) = 0;
+	virtual void RefreshPokes() = 0;
 
 	virtual bool OnOpenFile(const char* name, const void* data = NULL, size_t data_size = 0) = 0;
 	virtual bool OnSaveFile(const char* name) = 0;

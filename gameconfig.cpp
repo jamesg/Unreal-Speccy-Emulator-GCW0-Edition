@@ -102,6 +102,23 @@ void gameConfig::init(std::istream& infile)
         {
             if(value == "48")
                 m_48k = true;
+            }
+
+        if(key == "P")
+        {
+            std::string item;
+            std::istringstream iss(value);
+            while(std::getline(iss, item, ';'))
+            {
+                const std::string::size_type split = value.find(',');
+                if(split != std::string::npos)
+                {
+                    const int addr = atoi(item.substr(0, split).c_str());
+                    const byte mem = (byte)(atoi(item.substr(split + 1).c_str()));
+                    std::cerr << "Poke " << addr << " " << (int)mem << std::endl;
+                    xPlatform::Handler()->Poke(addr, mem);
+                }
+            }
         }
 
         if(key == "D")
