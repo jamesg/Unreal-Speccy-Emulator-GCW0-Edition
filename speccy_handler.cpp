@@ -16,7 +16,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <iostream>
+
 #include <map>
+#include <stdexcept>
 #include <libgen.h>
 #include "platform/platform.h"
 #include "speccy.h"
@@ -40,6 +43,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "file_type.h"
 #include "gameconfig.h"
 #include "snapshot/rzx.h"
+
 int gcw_fullscreen = 1;
 
 namespace xPlatform
@@ -682,6 +686,171 @@ static struct eFileTypeZXK : public eFileType
 	}
 	virtual const char* Type() { return "zxk"; }
 } ft_zxk;
+static struct eFileTypeAY : public eFileType
+{
+    class ayAccessor : public xZ80::eZ80
+    {
+        public:
+        void Set(
+                short unsigned int pc_,
+                short unsigned int sp_,
+                short unsigned int hireg,
+                short unsigned int loreg,
+                short unsigned int i_
+                )
+        {
+            im = 0;
+            pc = pc_;
+            sp = sp_;
+            b = d = h = a /*= xh = yh */= hireg;
+            alt.b = alt.d = alt.h = alt.a = hireg;
+            c = e = l = f /*= xl = yl */= r_low = loreg;
+            alt.c = alt.e = alt.l = alt.f = r_low = loreg;
+            i = i_;
+
+            devices->IoWrite(0x7ffd, 0, t);
+            devices->Get<eAY>()->Reset();
+        }
+        void SetPC(short unsigned int pc_)
+        {
+            pc = pc_;
+        }
+    };
+
+    unsigned char read_char(const unsigned char *data, size_t offset, size_t data_size)
+    {
+        // Requested char is outside of data.
+        if(offset + 1 >= data_size)
+            throw std::runtime_error("reading char");
+        return (unsigned char)data[offset];
+    }
+
+    unsigned short int read_word(const unsigned char *data, size_t offset, size_t data_size)
+    {
+        // Requested word is outside of data.
+        if(offset + 1 >= data_size)
+            throw std::runtime_error("reading word");
+        return (((unsigned char)(data[offset]) << 8) & 0xff00) | (unsigned char)data[offset + 1];
+    }
+
+    size_t read_ptr(const unsigned char *data, size_t offset, size_t data_size)
+    {
+        //std::cerr << "read ptr " << offset << " " << data_size << "   " << (int)(data[offset]) << " " << (int)(data[offset+1]) << std::endl;
+        // Requested word is outside of data.
+        if(offset + 1 >= data_size)
+            throw std::runtime_error("reading ptr");
+        short int relative_ptr = (((unsigned char)(data[offset]) << 8) & 0xff00) | (unsigned char)data[offset + 1];
+        //std::cerr << "rel " << relative_ptr << std::endl;
+        // Check that the target of the pointer is within data.
+        if((int)offset + relative_ptr > (int)(data_size - 2) || (int)offset + relative_ptr < 0)
+            throw std::runtime_error("ptr outside of file");
+        return (size_t)(offset + relative_ptr);
+    }
+
+	virtual bool Open(const char *name, const void* data_, size_t data_size)
+    {
+        const unsigned char *data = (const unsigned char *)data_;
+
+        sh.OnAction(A_RESET);
+        sh.speccy->Devices().Get<eRom>()->SelectPage(eMemory::P_ROM0);
+
+        // Check that the file is a ZXAYEMUL file.
+        if(memcmp(data, "ZXAYEMUL", 8) != 0)
+            return false;
+
+        //const unsigned char fileversion = read_char(data, 8, data_size);
+        const unsigned char playerversion = read_char(data, 9, data_size);
+        const size_t author_ptr = read_ptr(data, 12, data_size);
+        std::cerr << "Author: " << (char*)(data + author_ptr) << std::endl;
+        const size_t misc_ptr = read_ptr(data, 14, data_size);
+        std::cerr << "Misc: " << (char*)(data + misc_ptr) << std::endl;
+        const unsigned char num_songs = read_char(data, 16, data_size) + 1;
+        std::cerr << "num songs " << (int)num_songs << std::endl;
+        const unsigned char first_song = read_char(data, 17, data_size);
+        std::cerr << "first song " << (int)first_song << std::endl;
+        const size_t song_ptr = read_ptr(data, 18, data_size);
+
+        unsigned char memory[0x10000];
+        memset(memory, 0xc9, 0xff);
+        memset(memory + 0x0100, 0xff, 0x3f00);
+        memset(memory + 0x4000, 0, 0xc000);
+        memory[0x38] = 0xfb;
+
+        const unsigned char load_song = first_song;
+
+        const size_t this_song_ptr = song_ptr + (load_song * 4);
+        const size_t songname = read_ptr(data, this_song_ptr, data_size);
+        const size_t song_data_ptr = read_ptr(data, this_song_ptr + 2, data_size);
+        const unsigned short int song_length = read_word(data, song_data_ptr + 4, data_size);
+        const unsigned short int fade_length = read_word(data, song_data_ptr + 6, data_size);
+        const unsigned char hireg = read_char(data, song_data_ptr + 8, data_size);
+        const unsigned char loreg = read_char(data, song_data_ptr + 9, data_size);
+        const size_t song_points_ptr = read_ptr(data, song_data_ptr + 10, data_size);
+        const size_t song_addresses_ptr = read_ptr(data, song_data_ptr + 12, data_size);
+
+        std::cerr << "Song title: " << (char*)(data + songname) << std::endl;
+
+        const unsigned short int stack = read_word(data, song_points_ptr, data_size);
+        unsigned short int init = read_word(data, song_points_ptr + 2, data_size);
+        const unsigned short int inter = read_word(data, song_points_ptr + 4, data_size);
+
+        std::cerr << "version " << (int)playerversion << "len " << song_length << " fade " << fade_length << " hireg " << (int)hireg << " loreg " << (int)loreg << " stack " << stack << " init " << init << " inter " << inter << std::endl;
+
+        // Player program used if 'inter' is zero.
+        static unsigned char intz[] = { 0xf3, 0xcd, 0, 0, 0xed, 0x5e, 0xfb, 0x76, 0x18, 0xfa };
+        // Player program used if 'inter' is not zero.
+        static unsigned char intnz[] = { 0xf3, 0xcd, 0, 0, 0xed, 0x56, 0xfb, 0x76, 0xcd, 0, 0, 0x18, 0xf7 };
+
+        for(int i_addr = 0; read_word(data, song_addresses_ptr + (i_addr * 6), data_size) != 0; ++i_addr) {
+            const size_t address_block_ptr = song_addresses_ptr + (i_addr * 6);
+            const unsigned short addr_z80 = read_word(data, address_block_ptr, data_size);
+            if(init == 0)
+                init = addr_z80;
+        }
+
+        if(inter == 0)
+            memcpy(memory, intz, sizeof(intz));
+        else
+        {
+            memcpy(memory, intnz, sizeof(intnz));
+            memory[9] = (unsigned char)(inter >> 8);
+            memory[10] = (unsigned char)(inter & 0xff);
+        }
+
+        memory[2] = (unsigned char)(init >> 8);
+        memory[3] = (unsigned char)(init & 0xff);
+
+        for(int i_addr = 0; read_word(data, song_addresses_ptr + (i_addr * 6), data_size) != 0; ++i_addr) {
+            const size_t address_block_ptr = song_addresses_ptr + (i_addr * 6);
+            const unsigned short addr_z80 = read_word(data, address_block_ptr, data_size);
+            const unsigned short length = read_word(data, address_block_ptr + 2, data_size);
+            const unsigned short offset = read_ptr(data, address_block_ptr + 4, data_size);
+            const unsigned short addr_z80_end = addr_z80 + length;
+
+            std::cerr << "copy " << (int)offset << " to " << (int)addr_z80 << " " << (int)addr_z80_end << " (" << (int)length << ")" << std::endl;
+
+            memcpy(memory + addr_z80, data + offset, length);
+        }
+
+        // Overwrite the ROM from address 0.
+        memcpy(sh.speccy->Memory()->Get(eMemory::P_ROM0), memory, 0x4000);
+        // Overwrite the rest of the addressable memory.
+        memcpy(sh.speccy->Memory()->Get(eMemory::P_RAM5), memory + 0x4000, 0x4000);
+        memcpy(sh.speccy->Memory()->Get(eMemory::P_RAM2), memory + 0x8000, 0x4000);
+        memcpy(sh.speccy->Memory()->Get(eMemory::P_RAM0), memory + 0xc000, 0x4000);
+
+        memset(sh.speccy->Memory()->Get(eMemory::P_RAM1), 0x00, 0x4000);
+        memset(sh.speccy->Memory()->Get(eMemory::P_RAM3), 0x00, 0x4000);
+        memset(sh.speccy->Memory()->Get(eMemory::P_RAM4), 0x00, 0x4000);
+        memset(sh.speccy->Memory()->Get(eMemory::P_RAM6), 0x00, 0x4000);
+        memset(sh.speccy->Memory()->Get(eMemory::P_RAM7), 0x00, 0x4000);
+
+        ((ayAccessor*)sh.speccy->CPU())->Set(0, stack, hireg, loreg, 0);
+
+        return true;
+    }
+	virtual const char* Type() { return "ay"; }
+} ft_ay;
 
 }
 //namespace xPlatform
